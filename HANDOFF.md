@@ -90,12 +90,38 @@ This stopped being solo-use-only. Two explicit decisions made together:
 2. Personality/profanity **configurable**, not hardcoded to one character
    — but safety rules (confirmation flow, sudo gate) stay fixed regardless
 
-## Where QML Work Was Paused — Read Carefully Before Continuing
+## QML Work — Read Carefully Before Continuing
+
+**Important context**: a prior session implemented real QML files here
+(listed below) without walking Jegan through any of it, despite him
+wanting to actually learn QML by building it with guidance — a violation
+of the collaboration rule at the top of `~/Work/CLAUDE.md`. **Jegan has
+not learned this content.** The files work, but treat them as something
+to teach *retroactively* (review line by line with him, as if he's
+about to write the next section) rather than a settled foundation to
+silently build on top of. Don't just add Section 2 on top of Section 1
+without first giving him the walkthrough he was owed for Section 1.
 
 **Decision made**: Option A — build using Omarchy's real internal
 component library (`qs.Commons`/`qs.Ui`) for proper native theme
 integration, NOT a bare standalone Quickshell `PanelWindow` (that was
 Option B, explicitly not chosen).
+
+**What actually exists on disk right now**
+(`~/.config/omarchy/plugins/kokki/`, NOT tracked in this git repo since
+it lives outside the project directory):
+- `manifest.json` — bar-widget, id `jeganmurali.kokki`, entry point
+  `Panel.qml`
+- `Panel.qml` (117 lines) — "Section 1" per its own comment: proves
+  the plugin mechanics (bar icon, popup, scrollback, text input) work
+  in the real bar using a local JS array only — **no network code, no
+  Process, no curl yet**. Uses `BarIconButton`, `KeyboardPanel`,
+  `PanelKeyCatcher`, `PanelSectionHeader`, `Flickable` + `Repeater` for
+  the scrollback, plain `TextField` for input. These specific
+  components (`KeyboardPanel`, `PanelKeyCatcher`, `PanelSectionHeader`)
+  were used successfully but are NOT yet explained to Jegan and aren't
+  in the "read and understood" list below — that gap needs closing
+  before trusting or extending this file further.
 
 **What's verified so far** (real files read, not guessed):
 - Plugin structure: `~/.config/omarchy/plugins/<id>/` +
@@ -123,30 +149,37 @@ Option B, explicitly not chosen).
   works), `Ui/BarIconButton.qml` (extends `WidgetButton`, needs `text`
   as glyph or `iconComponent`)
 
-**NOT yet read — needed before writing a real `Panel.qml`**:
-- `Ui/WidgetButton.qml` — what `BarIconButton` actually extends
-- `Ui/PopupCard.qml` — likely the actual popup-window-rendering piece
-  (disk-speedtest delegates its visual popup to `SpeedTestOverlay`,
-  a similar-shaped component we haven't read — `PopupCard` is probably
-  the more generic version of that same idea)
-- `Ui/BarWidget.qml` — how a plugin's bar icon actually gets registered
-  into the bar itself (as opposed to the popup content)
-- Worth finding a real plugin that has genuine **text input + scrollback
-  display** (closer to a chat shape) rather than a gauge/dial display like
-  disk-speedtest — `wifiqr/Panel.qml` (369 lines) or `power/Panel.qml`
-  (536 lines) are reasonable next candidates to check, untested guesses,
-  verify before trusting
+**Still not explained to Jegan** (used in the existing `Panel.qml` but
+not walked through, and not verified against their source the way the
+list above was):
+- `Ui/KeyboardPanel.qml` — the actual popup-window/positioning mechanism
+  used (turned out to be the real answer to the `PopupCard`/
+  `SpeedTestOverlay` question from earlier research — confirm this by
+  reading it, don't assume the existing file got it right just because
+  it presumably renders)
+- `Ui/PanelKeyCatcher.qml` — keyboard/focus handling, `onCloseRequested`/
+  `onTabRequested`
+- `Ui/PanelSectionHeader.qml` — simple header component, probably low
+  complexity to explain
+- Plain `Flickable` + `Repeater` for the scrollback list — this part is
+  closer to generic QtQuick than Omarchy-specific, reasonable to teach
+  from first principles
 
-**The actual build plan once research is done**:
-1. `manifest.json` for `kokki` — bar-widget, `entryPoints.barWidget: Panel.qml`
-2. `Panel.qml` extending base `Panel` — bar icon (`BarIconButton`) +
-   popup content (probably built on `PopupCard`, once verified) with a
-   `TextField` for input and a scrollback display area
-3. Wire `/chat` first via `Process` + `StdioCollector` + `curl` — prove
-   the whole loop once, non-streaming
-4. Then swap to `/chat/stream` via `Process` + `SplitParser` +
-   `curl -N` — visible token-by-token text, same mechanism
-   `disk-speedtest` already proved works for its own streaming numbers
+**Immediate next step, in order**:
+1. **Teach Jegan `Panel.qml` as it exists** — walk through each block
+   (the `Panel` base wiring, `BarIconButton`, `KeyboardPanel`/
+   `PanelKeyCatcher`, the `messages` array + `Repeater` scrollback
+   pattern, `TextField.onAccepted`) — verify the components against
+   their real source first, same rigor as the already-read list above.
+   Test it live in the bar together so he sees it run and understands
+   why each piece is there.
+2. **Section 2** (not started): wire the real `/chat` endpoint via
+   `Process` + `StdioCollector` + `curl`, replacing the local-echo
+   placeholder in `submitInput()` — teach this as new code, don't just
+   drop it in.
+3. **Section 3**: swap to `/chat/stream` via `Process` + `SplitParser` +
+   `curl -N` for visible token-by-token text — same mechanism
+   `disk-speedtest` already proved works for its own streaming numbers.
 
 ## Key File Locations Reference
 
