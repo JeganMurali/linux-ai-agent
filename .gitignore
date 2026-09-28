@@ -44,4 +44,4 @@ Kokki Testing/
 
 .vscode/
 .idea/
-kokki_memory.sqlite
+kokki_memory.sqlite*
