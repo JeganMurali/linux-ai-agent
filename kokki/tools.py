@@ -63,3 +63,24 @@ def system_control(command: str) -> str:
         return "Command timed out (>20 seconds)"
     except Exception as e:
         return f"Error: {str(e)}"
+
+
+@tool
+def get_system_info() -> str:
+    """
+    Returns clean, already-computed CPU, RAM, and disk stats.
+    Use this instead of system_control for CPU/RAM/disk questions - it
+    returns exact numbers directly from psutil, not raw command text the
+    model has to parse and can misread.
+    """
+    logger.info("tool used: get_system_info()")
+
+    cpu_percent = psutil.cpu_percent(interval=0.5)
+    ram = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+
+    return (
+        f"CPU: {cpu_percent}%\n"
+        f"RAM: {ram.percent}% used ({ram.used / 1e9:.1f}GB / {ram.total / 1e9:.1f}GB)\n"
+        f"Disk: {disk.percent}% used ({disk.used / 1e9:.1f}GB / {disk.total / 1e9:.1f}GB)"
+    )

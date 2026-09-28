@@ -35,6 +35,25 @@ async def test_different_threads_are_isolated():
     assert "crimson" not in response_b.lower()
 
 
+async def test_astream_chat_yields_only_real_ai_content():
+    """
+    Regression test: stream_mode="messages" streams tokens from EVERY
+    message in the graph, including the HumanMessage input_node creates -
+    its full content leaked through as a fake "chunk" before we filtered
+    by AIMessageChunk type. Verifies that never happens again.
+    """
+    kokki = KokkiAgent()
+    kokki.thread_id = "memory-test-stream"
+
+    user_input = "this exact sentence must never appear in a chunk"
+    chunks = []
+    async for chunk in kokki.astream_chat(user_input):
+        chunks.append(chunk)
+
+    assert len(chunks) > 0
+    assert user_input not in "".join(chunks)
+
+
 async def test_new_agent_instance_resumes_previous_thread_via_sqlite():
     """
     Since the swap from MemorySaver (RAM) to SqliteSaver (disk), a brand new

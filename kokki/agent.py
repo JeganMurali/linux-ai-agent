@@ -5,9 +5,9 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_groq import ChatGroq
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessageChunk
 from typing import TypedDict, Annotated
-from kokki.tools import system_control
+from kokki.tools import system_control, get_system_info
 from kokki.config import (
     LLM_BACKEND,
     GROQ_API_KEY,
@@ -24,7 +24,7 @@ from kokki.observability import get_logger
 
 # All tools Kokki knows about, keyed by name - setup.py's ENABLED_TOOLS
 # picks a subset of this to actually bind to the LLM.
-ALL_TOOLS = {"system_control": system_control}
+ALL_TOOLS = {"system_control": system_control, "get_system_info": get_system_info}
 TOOLS = [ALL_TOOLS[name] for name in ENABLED_TOOLS if name in ALL_TOOLS]
 
 logger = get_logger()
@@ -115,3 +115,28 @@ class KokkiAgent:
 
         logger.info(f"memory saved: thread_id={thread_id!r}")
         return result["messages"][-1].content
+
+    async def astream_chat(self, user_input: str, thread_id: str = None):
+        """
+        Yields Kokki's reply piece by piece, as Groq/Ollama generates it -
+        instead of chat()'s wait-for-the-whole-thing-then-return.
+
+        stream_mode="messages" gives a (chunk, metadata) pair for every
+        token from EVERY LLM call inside the graph - including the internal
+        "should I call a tool?" reasoning call, which usually has empty or
+        irrelevant content. We only yield real, non-empty text chunks, so
+        the caller only ever sees the actual conversational reply.
+        """
+        await self._ensure_graph()
+        thread_id = thread_id or self.thread_id
+        state = {"messages": [], "user_input": user_input}
+
+        async for chunk, metadata in self.graph.astream(
+            state,
+            config={"configurable": {"thread_id": thread_id}},
+            stream_mode="messages",
+        ):
+            if isinstance(chunk, AIMessageChunk) and chunk.content:
+                yield chunk.content
+
+        logger.info(f"memory saved: thread_id={thread_id!r}")
