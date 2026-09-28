@@ -1,4 +1,6 @@
-from langgraph.checkpoint.memory import MemorySaver
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 def get_checkpointer():
-    return MemorySaver()
+    conn = sqlite3.connect("kokki_memory.sqlite", check_same_thread=False)
+    return SqliteSaver(conn)

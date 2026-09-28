@@ -36,16 +36,22 @@ def test_different_threads_are_isolated():
     assert "crimson" not in response_b.lower()
 
 
-def test_new_agent_instance_does_not_resume_previous_thread():
+def test_new_agent_instance_resumes_previous_thread_via_sqlite():
+    """
+    Since the swap from MemorySaver (RAM) to SqliteSaver (disk), a brand new
+    KokkiAgent instance - simulating a server restart - now DOES resume a
+    previous thread's memory, because the checkpointer reads the same
+    kokki_memory.sqlite file regardless of which Python object created it.
+    """
     same_thread_id = "memory-test-resume-attempt"
 
     kokki_first = KokkiAgent()
     kokki_first.thread_id = same_thread_id
     kokki_first.chat("My favorite color is magenta, remember that.")
 
-    # Brand new KokkiAgent = brand new MemorySaver, even with the SAME thread_id
+    # Brand new KokkiAgent = brand new Python object, SAME sqlite file on disk
     kokki_second = KokkiAgent()
     kokki_second.thread_id = same_thread_id
     response = kokki_second.chat("What is my favorite color?")
 
-    assert "magenta" not in response.lower()
+    assert "magenta" in response.lower()

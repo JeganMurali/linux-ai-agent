@@ -66,16 +66,17 @@ class KokkiAgent:
         self.graph = create_agent()
         self.thread_id = "main"
 
-    def chat(self, user_input: str):
+    def chat(self, user_input: str, thread_id: str = None):
+        thread_id = thread_id or self.thread_id
         state = {"messages": [], "user_input": user_input}
         try:
             result = self.graph.invoke(
                 state,
-                config={"configurable": {"thread_id": self.thread_id}}
+                config={"configurable": {"thread_id": thread_id}}
             )
         except APIError as e:
             logger.info(f"groq api error: {e!r}")
             return "Fuck, Groq choked on that one - try rephrasing it."
 
-        logger.info(f"memory saved: thread_id={self.thread_id!r}")
+        logger.info(f"memory saved: thread_id={thread_id!r}")
         return result["messages"][-1].content
