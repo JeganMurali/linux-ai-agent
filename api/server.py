@@ -1,3 +1,4 @@
+import json
 import uuid
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -38,15 +39,15 @@ async def chat(request: ChatRequest):
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """
-    Same as /chat, but returns text chunks as Kokki generates them instead
-    of waiting for the full reply. media_type="text/plain" tells the client
-    (and FastAPI's docs page) this isn't one JSON blob - it's a stream of
-    raw text pieces sent as they become available.
+    Same as /chat, but streams as Kokki generates: one JSON event per line
+    (NDJSON) - tool / token / done / error, shapes in api.schemas.ChatEvent.
+    json.dumps never emits a raw newline, so "one event per line" always
+    holds, even for replies containing newlines.
     """
     thread_id = request.thread_id or DEFAULT_THREAD_ID
 
     async def generate():
-        async for chunk in kokki.astream_chat(request.message, thread_id=thread_id):
-            yield chunk
+        async for event in kokki.astream_chat(request.message, thread_id=thread_id):
+            yield json.dumps(event) + "\n"
 
-    return StreamingResponse(generate(), media_type="text/plain")
+    return StreamingResponse(generate(), media_type="application/x-ndjson")

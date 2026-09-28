@@ -1,4 +1,5 @@
-from pydantic import BaseModel
+from typing import Annotated, Literal, Union
+from pydantic import BaseModel, Field
 
 
 class ChatRequest(BaseModel):
@@ -13,3 +14,30 @@ class ChatResponse(BaseModel):
 
 class ThreadResponse(BaseModel):
     thread_id: str
+
+
+# One line of the /chat/events stream. A stream is any number of tool/token
+# events followed by exactly one terminal event: done or error.
+class ToolEvent(BaseModel):
+    type: Literal["tool"]
+    name: str
+
+
+class TokenEvent(BaseModel):
+    type: Literal["token"]
+    text: str
+
+
+class DoneEvent(BaseModel):
+    type: Literal["done"]
+
+
+class ErrorEvent(BaseModel):
+    type: Literal["error"]
+    message: str
+
+
+ChatEvent = Annotated[
+    Union[ToolEvent, TokenEvent, DoneEvent, ErrorEvent],
+    Field(discriminator="type"),
+]

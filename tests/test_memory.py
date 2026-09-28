@@ -40,18 +40,18 @@ async def test_astream_chat_yields_only_real_ai_content():
     Regression test: stream_mode="messages" streams tokens from EVERY
     message in the graph, including the HumanMessage input_node creates -
     its full content leaked through as a fake "chunk" before we filtered
-    by AIMessageChunk type. Verifies that never happens again.
+    by AIMessageChunk type. Verifies that never happens again (real Groq;
+    the offline version is in test_stream_contract.py).
     """
     kokki = KokkiAgent()
     kokki.thread_id = "memory-test-stream"
 
     user_input = "this exact sentence must never appear in a chunk"
-    chunks = []
-    async for chunk in kokki.astream_chat(user_input):
-        chunks.append(chunk)
+    events = [event async for event in kokki.astream_chat(user_input)]
+    text = "".join(e["text"] for e in events if e["type"] == "token")
 
-    assert len(chunks) > 0
-    assert user_input not in "".join(chunks)
+    assert events[-1]["type"] == "done"
+    assert user_input not in text
 
 
 async def test_new_agent_instance_resumes_previous_thread_via_sqlite():

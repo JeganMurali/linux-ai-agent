@@ -11,8 +11,12 @@ test's current loop, instead of reusing a stale one from a prior test.
 """
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import TypeAdapter
+from api.schemas import ChatEvent
 from api.server import app
 from api import server
+
+event_adapter = TypeAdapter(ChatEvent)
 
 client = TestClient(app)
 
@@ -48,20 +52,28 @@ def test_chat_respects_explicit_thread_id():
     assert response.json()["thread_id"] == thread_id
 
 
-def test_chat_stream_endpoint_returns_real_content():
+def _read_events(message):
     """
-    Confirms the streaming endpoint is wired correctly end-to-end.
-    NOTE: doesn't assert on chunk COUNT - FastAPI's TestClient drains the
-    whole ASGI response synchronously through its portal, collapsing
-    multi-chunk generators into a single read regardless of how many
-    pieces were actually yielded. True chunk-by-chunk delivery is already
-    proven directly against KokkiAgent.astream_chat() in test_memory.py,
-    and against a real running uvicorn server via curl -N.
+    NOTE: doesn't assert on chunk COUNT or timing - FastAPI's TestClient drains
+    the whole ASGI response through its portal, so it can't show chunk-by-chunk
+    delivery. Real-time delivery is checked with curl -N against a live server.
     """
-    with client.stream(
-        "POST", "/chat/stream", json={"message": "tell me a short joke"}
-    ) as response:
+    with client.stream("POST", "/chat/stream", json={"message": message}) as response:
         assert response.status_code == 200
-        text = "".join(response.iter_text())
+        lines = [line for line in response.iter_lines() if line]
+    return [event_adapter.validate_json(line) for line in lines]
 
-    assert text.strip() != ""
+
+def test_chat_stream_real_reply_ends_with_done():
+    """Real-Groq smoke test. The exhaustive contract tests use a fake model:
+    see test_stream_contract.py."""
+    events = _read_events("tell me a short joke")
+    assert events[-1].type == "done"
+    assert "".join(e.text for e in events if e.type == "token").strip() != ""
+
+
+def test_chat_stream_real_tool_call_is_announced_before_the_reply():
+    events = _read_events("run this exact command: echo probe-ok")
+    types = [e.type for e in events]
+    assert "tool" in types
+    assert types.index("tool") < types.index("token")

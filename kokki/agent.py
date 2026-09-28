@@ -118,25 +118,45 @@ class KokkiAgent:
 
     async def astream_chat(self, user_input: str, thread_id: str = None):
         """
-        Yields Kokki's reply piece by piece, as Groq/Ollama generates it -
-        instead of chat()'s wait-for-the-whole-thing-then-return.
+        Yields Kokki's reply as small dicts, as Groq/Ollama generates it, so a
+        client can tell a reply token from "a tool just started" and hear about
+        failures. Always ends with exactly one terminal event: "done" or
+        "error". See api.schemas.ChatEvent for the shapes.
 
-        stream_mode="messages" gives a (chunk, metadata) pair for every
-        token from EVERY LLM call inside the graph - including the internal
-        "should I call a tool?" reasoning call, which usually has empty or
-        irrelevant content. We only yield real, non-empty text chunks, so
-        the caller only ever sees the actual conversational reply.
+        stream_mode="messages" gives a (chunk, metadata) pair for every token
+        from EVERY LLM call in the graph, including the tool-deciding call
+        (empty text, tool_call_chunks set). Only AIMessageChunks matter here.
         """
         await self._ensure_graph()
         thread_id = thread_id or self.thread_id
         state = {"messages": [], "user_input": user_input}
 
-        async for chunk, metadata in self.graph.astream(
-            state,
-            config={"configurable": {"thread_id": thread_id}},
-            stream_mode="messages",
-        ):
-            if isinstance(chunk, AIMessageChunk) and chunk.content:
-                yield chunk.content
+        try:
+            async for chunk, metadata in self.graph.astream(
+                state,
+                config={"configurable": {"thread_id": thread_id}},
+                stream_mode="messages",
+            ):
+                if not isinstance(chunk, AIMessageChunk):
+                    continue
+                # A tool call's name only appears on its first chunk (args can
+                # arrive split across several), so a non-empty name = a new call.
+                for call in chunk.tool_call_chunks:
+                    if call.get("name"):
+                        yield {"type": "tool", "name": call["name"]}
+                if chunk.content:
+                    yield {"type": "token", "text": chunk.content}
+        except APIError as e:
+            logger.info(f"groq api error: {e!r}")
+            yield {"type": "error", "message": "Fuck, Groq choked on that one - try rephrasing it."}
+            return
+        except Exception as e:
+            logger.info(f"llm backend error: {e!r}")
+            yield {
+                "type": "error",
+                "message": f"Fuck, couldn't reach the {LLM_BACKEND} backend - is it actually running?",
+            }
+            return
 
         logger.info(f"memory saved: thread_id={thread_id!r}")
+        yield {"type": "done"}
