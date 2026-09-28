@@ -21,4 +21,4 @@ KOKKI_PERSONALITY = os.getenv("KOKKI_PERSONALITY")  # None = use the default
 KOKKI_PROFANITY = os.getenv("KOKKI_PROFANITY", "true").lower() == "true"
 
 # Which tools are enabled - set by kokki_setup.py, comma-separated tool names
-ENABLED_TOOLS = os.getenv("KOKKI_ENABLED_TOOLS", "system_control,get_system_info").split(",")
+ENABLED_TOOLS = os.getenv("KOKKI_ENABLED_TOOLS", "system_control").split(",")

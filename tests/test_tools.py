@@ -1,4 +1,4 @@
-from kokki.tools import system_control, get_system_info
+from kokki.tools import system_control
 
 
 def test_blocks_rm_rf_root():
@@ -27,10 +27,3 @@ def test_large_output_gets_truncated():
     result = system_control.invoke({"command": "yes | head -c 50000"})
     assert len(result) < 2200
     assert "truncated" in result
-
-
-def test_get_system_info_returns_clean_stats():
-    result = get_system_info.invoke({})
-    assert "CPU:" in result
-    assert "RAM:" in result
-    assert "Disk:" in result

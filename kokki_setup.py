@@ -18,7 +18,6 @@ PERSONALITY_PRESETS = {
 
 AVAILABLE_TOOLS = {
     "1": ("system_control", "Run shell commands, open apps, manage files"),
-    "2": ("get_system_info", "Clean CPU/RAM/disk stats (no LLM parsing of raw command output)"),
 }
 
 

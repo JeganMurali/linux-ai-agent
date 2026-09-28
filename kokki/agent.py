@@ -7,7 +7,7 @@ from langchain_groq import ChatGroq
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessageChunk
 from typing import TypedDict, Annotated
-from kokki.tools import system_control, get_system_info
+from kokki.tools import system_control
 from kokki.config import (
     LLM_BACKEND,
     GROQ_API_KEY,
@@ -24,7 +24,7 @@ from kokki.observability import get_logger
 
 # All tools Kokki knows about, keyed by name - setup.py's ENABLED_TOOLS
 # picks a subset of this to actually bind to the LLM.
-ALL_TOOLS = {"system_control": system_control, "get_system_info": get_system_info}
+ALL_TOOLS = {"system_control": system_control}
 TOOLS = [ALL_TOOLS[name] for name in ENABLED_TOOLS if name in ALL_TOOLS]
 
 logger = get_logger()
