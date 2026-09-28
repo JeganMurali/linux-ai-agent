@@ -4,16 +4,36 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage
 from typing import TypedDict, Annotated
 from kokki.tools import system_control
-from kokki.config import GROQ_API_KEY, GROQ_MODEL
-from kokki.prompts import KOKKI_SYSTEM_PROMPT
+from kokki.config import (
+    LLM_BACKEND,
+    GROQ_API_KEY,
+    GROQ_MODEL,
+    OLLAMA_BASE_URL,
+    OLLAMA_MODEL,
+    KOKKI_PERSONALITY,
+    KOKKI_PROFANITY,
+    ENABLED_TOOLS,
+)
+from kokki.prompts import build_system_prompt
 from kokki.memory import get_checkpointer
 from kokki.observability import get_logger
 
-TOOLS = [system_control]
+# All tools Kokki knows about, keyed by name - setup.py's ENABLED_TOOLS
+# picks a subset of this to actually bind to the LLM.
+ALL_TOOLS = {"system_control": system_control}
+TOOLS = [ALL_TOOLS[name] for name in ENABLED_TOOLS if name in ALL_TOOLS]
+
 logger = get_logger()
+
+
+def get_llm():
+    if LLM_BACKEND == "ollama":
+        return ChatOllama(base_url=OLLAMA_BASE_URL, model=OLLAMA_MODEL)
+    return ChatGroq(api_key=GROQ_API_KEY, model=GROQ_MODEL)
 
 
 class AgentState(TypedDict):
@@ -27,10 +47,11 @@ def input_node(state):
 
 
 async def llm_node(state):
-    llm = ChatGroq(api_key=GROQ_API_KEY, model=GROQ_MODEL)
+    llm = get_llm()
     llm_with_tools = llm.bind_tools(TOOLS)
 
-    messages = [SystemMessage(content=KOKKI_SYSTEM_PROMPT)] + state["messages"]
+    system_prompt = build_system_prompt(KOKKI_PERSONALITY, KOKKI_PROFANITY)
+    messages = [SystemMessage(content=system_prompt)] + state["messages"]
 
     start = time.time()
     response = await llm_with_tools.ainvoke(messages)
@@ -86,6 +107,11 @@ class KokkiAgent:
         except APIError as e:
             logger.info(f"groq api error: {e!r}")
             return "Fuck, Groq choked on that one - try rephrasing it."
+        except Exception as e:
+            # Catches Ollama-side failures too (e.g. connection refused if
+            # `ollama serve` isn't running) - any backend, same boundary.
+            logger.info(f"llm backend error: {e!r}")
+            return f"Fuck, couldn't reach the {LLM_BACKEND} backend - is it actually running?"
 
         logger.info(f"memory saved: thread_id={thread_id!r}")
         return result["messages"][-1].content
