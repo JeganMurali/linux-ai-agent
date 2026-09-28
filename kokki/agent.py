@@ -1,4 +1,5 @@
 import time
+from groq import APIError
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -67,9 +68,14 @@ class KokkiAgent:
 
     def chat(self, user_input: str):
         state = {"messages": [], "user_input": user_input}
-        result = self.graph.invoke(
-            state,
-            config={"configurable": {"thread_id": self.thread_id}}
-        )
+        try:
+            result = self.graph.invoke(
+                state,
+                config={"configurable": {"thread_id": self.thread_id}}
+            )
+        except APIError as e:
+            logger.info(f"groq api error: {e!r}")
+            return "Fuck, Groq choked on that one - try rephrasing it."
+
         logger.info(f"memory saved: thread_id={self.thread_id!r}")
         return result["messages"][-1].content
