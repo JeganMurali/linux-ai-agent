@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 
+import asyncio
 from kokki.agent import KokkiAgent
 
-def main():
+async def main():
     kokki = KokkiAgent()
     print("🤖 Kokki Kumar is ready!")
     print("Type 'exit' to quit\n")
@@ -15,9 +16,9 @@ def main():
             print("Kokki: Catch you later! 👋")
             break
 
-        response = kokki.chat(user_input)
+        response = await kokki.chat(user_input)
         print(f"Kokki: {response}\n")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

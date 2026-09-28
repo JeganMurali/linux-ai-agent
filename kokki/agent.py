@@ -26,14 +26,14 @@ def input_node(state):
     return {"messages": [HumanMessage(content=state["user_input"])]}
 
 
-def llm_node(state):
+async def llm_node(state):
     llm = ChatGroq(api_key=GROQ_API_KEY, model=GROQ_MODEL)
     llm_with_tools = llm.bind_tools(TOOLS)
 
     messages = [SystemMessage(content=KOKKI_SYSTEM_PROMPT)] + state["messages"]
 
     start = time.time()
-    response = llm_with_tools.invoke(messages)
+    response = await llm_with_tools.ainvoke(messages)
     duration_ms = (time.time() - start) * 1000
 
     thinking = response.additional_kwargs.get("reasoning_content")
@@ -47,7 +47,7 @@ def llm_node(state):
     return {"messages": [response]}
 
 
-def create_agent():
+async def create_agent():
     graph = StateGraph(AgentState)
     graph.add_node("input", input_node)
     graph.add_node("llm", llm_node)
@@ -58,19 +58,28 @@ def create_agent():
     graph.add_conditional_edges("llm", tools_condition)
     graph.add_edge("tools", "llm")
 
-    return graph.compile(checkpointer=get_checkpointer())
+    checkpointer = await get_checkpointer()
+    return graph.compile(checkpointer=checkpointer)
 
 
 class KokkiAgent:
     def __init__(self):
-        self.graph = create_agent()
+        self.graph = None  # built lazily - see _ensure_graph
         self.thread_id = "main"
 
-    def chat(self, user_input: str, thread_id: str = None):
+    async def _ensure_graph(self):
+        # aiosqlite.connect() (inside get_checkpointer) is itself async,
+        # and __init__ can never be async - so the graph gets built on the
+        # first real chat() call instead of at construction time.
+        if self.graph is None:
+            self.graph = await create_agent()
+
+    async def chat(self, user_input: str, thread_id: str = None):
+        await self._ensure_graph()
         thread_id = thread_id or self.thread_id
         state = {"messages": [], "user_input": user_input}
         try:
-            result = self.graph.invoke(
+            result = await self.graph.ainvoke(
                 state,
                 config={"configurable": {"thread_id": thread_id}}
             )

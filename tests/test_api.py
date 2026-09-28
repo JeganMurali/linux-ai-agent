@@ -1,11 +1,25 @@
 """
 Real API-level tests using FastAPI's TestClient - hits the actual routes,
 real Groq calls under the hood, but no need for uvicorn running separately.
+
+Each test gets a fresh event loop (pytest-asyncio default). The real
+uvicorn server only ever has ONE event loop for its whole life, so this
+isn't an issue there - but our shared module-level `kokki` object caches
+its graph (and the aiosqlite connection inside it) bound to whichever
+loop built it. Reset it before each test so it rebuilds fresh in THAT
+test's current loop, instead of reusing a stale one from a prior test.
 """
+import pytest
 from fastapi.testclient import TestClient
 from api.server import app
+from api import server
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def reset_kokki_graph():
+    server.kokki.graph = None
 
 
 def test_health():

@@ -28,7 +28,7 @@ def create_thread():
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+async def chat(request: ChatRequest):
     thread_id = request.thread_id or DEFAULT_THREAD_ID
-    reply = kokki.chat(request.message, thread_id=thread_id)
+    reply = await kokki.chat(request.message, thread_id=thread_id)
     return ChatResponse(reply=reply, thread_id=thread_id)
