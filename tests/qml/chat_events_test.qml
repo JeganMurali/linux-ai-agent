@@ -169,6 +169,15 @@ Window {
     check("the highlight moves up and wraps", CE.moveIndex(2, -1, 4) === 1 && CE.moveIndex(0, -1, 4) === 3)
     check("an empty menu keeps the highlight at zero", CE.moveIndex(5, 1, 0) === 0)
 
+    // waiting rules: a turn or a conversation switch must not start while something else is in flight
+    check("nothing in flight: go ahead", CE.blockedReason(false, false) === "")
+    check("a reply is streaming: busy", CE.blockedReason(true, false) === "busy")
+    check("a history/open load is running: loading", CE.blockedReason(false, true) === "loading")
+    check("both: the reply comes first", CE.blockedReason(true, true) === "busy")
+    check("each wait has its own visible note", CE.waitNote("busy").length > 0 && CE.waitNote("loading").length > 0 && CE.waitNote("busy") !== CE.waitNote("loading"))
+    check("no wait, no note", CE.waitNote("") === "")
+    check("the loading note tells you to retry", CE.waitNote("loading").toLowerCase().indexOf("try again") >= 0)
+
     // safeMarkdown
     check("image -> link", CE.safeMarkdown("![a](http://x/y.png)") === "[a](http://x/y.png)")
     check("reference image -> link", CE.safeMarkdown("![b][r]") === "[b][r]")
