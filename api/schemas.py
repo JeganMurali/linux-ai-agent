@@ -1,6 +1,17 @@
 from typing import Annotated, Literal, Union
 from pydantic import BaseModel, Field
 
+class SessionSummary(BaseModel):
+    thread_id: str
+    title: str           # the first thing you said, shortened
+    updated_at: str      # UTC timestamp of the last saved step
+    message_count: int   # what you said + what Kokki said back
+
+
+class SessionMessage(BaseModel):
+    role: Literal["you", "kokki"]
+    text: str
+
 
 class ChatRequest(BaseModel):
     message: str

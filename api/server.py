@@ -1,9 +1,10 @@
 import json
 import uuid
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from kokki.agent import KokkiAgent
-from api.schemas import ChatRequest, ChatResponse, ThreadResponse
+from api import sessions
+from api.schemas import ChatRequest, ChatResponse, SessionMessage, SessionSummary, ThreadResponse
 
 app = FastAPI()
 
@@ -51,3 +52,18 @@ async def chat_stream(request: ChatRequest):
             yield json.dumps(event) + "\n"
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
+
+
+@app.get("/threads", response_model=list[SessionSummary])
+async def list_threads(prefix: str = "", limit: int = Query(30, ge=1, le=100)):
+    await kokki._ensure_graph()
+    return await sessions.list_sessions(kokki.graph.checkpointer, prefix, limit)
+
+
+@app.get("/threads/{thread_id}/messages", response_model=list[SessionMessage])
+async def thread_messages(thread_id: str):
+    await kokki._ensure_graph()
+    messages = await sessions.get_messages(kokki.graph.checkpointer, thread_id)
+    if messages is None:
+        raise HTTPException(status_code=404, detail="no such thread")
+    return messages
