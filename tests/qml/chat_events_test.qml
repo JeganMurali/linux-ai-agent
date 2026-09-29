@@ -55,6 +55,120 @@ Window {
     check("message never appears as its own argv element",
           CE.streamCommand("http://h", "t", "rm -rf /", 5).indexOf("rm -rf /") === -1)
 
+    // newSessionId: a fresh, URL-safe conversation id under the configured base
+    check("session id is base-timestamp", CE.newSessionId("bar", 1790000000000) === "bar-1790000000000")
+    check("session ids differ over time", CE.newSessionId("bar", 1) !== CE.newSessionId("bar", 2))
+    check("a trailing dash in the base is not doubled", CE.newSessionId("bar-", 5) === "bar-5")
+    check("empty base gets a default", CE.newSessionId("", 5) === "session-5")
+    check("junk-only base gets a default", CE.newSessionId("!!!", 5) === "session-5")
+    check("unsafe characters become one dash", CE.newSessionId("my thread!", 5) === "my-thread-5")
+    check("numeric-string time works", CE.newSessionId("bar", "7") === "bar-7")
+    check("id has only URL-safe characters", /^[A-Za-z0-9_-]+$/.test(CE.newSessionId("a b/c?d", 9)))
+
+    // parseCommand: /commands typed into the input; anything else is a normal message
+    check("/new", same(CE.parseCommand("/new"), {name: "new", arg: "", known: true}))
+    check("surrounding spaces ignored", CE.parseCommand("  /history  ").name === "history")
+    check("argument is kept", CE.parseCommand("/open 3").arg === "3")
+    check("command names are case-insensitive", CE.parseCommand("/OPEN 3").name === "open")
+    check("multi-word argument", CE.parseCommand("/help me please").arg === "me please")
+    check("plain text is not a command", CE.parseCommand("hello") === null)
+    check("empty is not a command", CE.parseCommand("") === null)
+    check("lone slash is not a command", CE.parseCommand("/") === null)
+    check("a path is a message, not a command", CE.parseCommand("/etc/hosts show me") === null)
+    check("space after the slash is a message", CE.parseCommand("/ new") === null)
+    check("digits break the command shape", CE.parseCommand("/new2") === null)
+    check("slash mid-sentence is a message", CE.parseCommand("hello /new") === null)
+    check("unknown command-shaped word is flagged", CE.parseCommand("/histroy").known === false)
+    check("every real command is known",
+          ["new", "history", "open", "help"].every(function(n) { return CE.parseCommand("/" + n).known }))
+    check("/more is not a command any more (the Show more button does that)", CE.parseCommand("/more").known === false)
+
+    // URLs and the request for reading history
+    check("history url fetches one extra row to learn if there is more",
+          CE.historyUrl("http://h:9/", "bar", 10) === "http://h:9/threads?prefix=bar&limit=11")
+    check("prefix is url-encoded", CE.historyUrl("http://h", "a b", 10).indexOf("prefix=a%20b") >= 0)
+    check("limit is capped at the server maximum of 100", CE.historyUrl("http://h", "bar", 99).indexOf("limit=100") >= 0
+          && CE.historyUrl("http://h", "bar", 500).indexOf("limit=100") >= 0)
+    check("messages url", CE.messagesUrl("http://h/", "bar-1") === "http://h/threads/bar-1/messages")
+    check("thread id is url-encoded in the path", CE.messagesUrl("http://h", "a/b") === "http://h/threads/a%2Fb/messages")
+    check("GET command is an argument array", same(CE.getCommand("http://h/x", 20), ["curl", "-s", "--max-time", "20", "http://h/x"]))
+
+    // reading server answers
+    check("json list parses", same(CE.parseJsonList('[{"a":1}]'), [{a: 1}]))
+    check("empty list parses", same(CE.parseJsonList("[]"), []))
+    check("an error object is not a list", CE.parseJsonList('{"detail":"no such thread"}') === null)
+    check("garbage is not a list", CE.parseJsonList("not json") === null && CE.parseJsonList("") === null)
+
+    // paging: first page, then Load more
+    var eleven = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    check("more rows than the page -> show page, offer Load more", CE.pageOf(eleven, 10).rows.length === 10 && CE.pageOf(eleven, 10).hasMore === true)
+    check("exactly a page -> no Load more", CE.pageOf(eleven.slice(0, 10), 10).hasMore === false)
+    check("fewer than a page -> no Load more", CE.pageOf([1, 2, 3], 10).hasMore === false && CE.pageOf([1, 2, 3], 10).rows.length === 3)
+    check("empty and invalid input give an empty page", same(CE.pageOf([], 10), {rows: [], hasMore: false}) && same(CE.pageOf(null, 10), {rows: [], hasMore: false}))
+
+    // time-ago labels
+    var now = Date.parse("2026-09-29T12:00:00Z")
+    var ago = function(ms) { return new Date(now - ms).toISOString() }
+    check("30 s ago", CE.relativeTime(ago(30000), now) === "just now")
+    check("59 min ago", CE.relativeTime(ago(59 * 60000), now) === "59 min ago")
+    check("60 min ago is 1 h", CE.relativeTime(ago(60 * 60000), now) === "1 h ago")
+    check("2 h ago", CE.relativeTime(ago(2 * 3600000), now) === "2 h ago")
+    check("30 h ago is yesterday", CE.relativeTime(ago(30 * 3600000), now) === "yesterday")
+    check("5 days ago is a short date", /^[A-Z][a-z]{2} \d{1,2}$/.test(CE.relativeTime(ago(5 * 86400000), now)))
+    check("a timestamp slightly in the future is just now", CE.relativeTime(ago(-600000), now) === "just now")
+    check("garbage timestamp gives empty text", CE.relativeTime("garbage", now) === "")
+
+    check("a real server timestamp (microseconds, +00:00) parses",
+          CE.relativeTime("2026-09-29T09:25:11.215055+00:00", Date.parse("2026-09-29T11:25:12Z")) === "2 h ago")
+
+    // one row of the history list
+    var row = {thread_id: "bar-1", title: "hello", updated_at: ago(2 * 3600000), message_count: 56}
+    check("session row", same(CE.describeSession(row, 1, now), {number: 1, title: "hello", meta: "56 msgs · 2 h ago", threadId: "bar-1"}))
+    check("singular message", CE.describeSession({thread_id: "x", title: "t", updated_at: ago(1000), message_count: 1}, 2, now).meta.indexOf("1 msg ·") === 0)
+    var longRow = {thread_id: "x", title: "z".repeat(60), updated_at: ago(1000), message_count: 2}
+    check("long title is shortened for the list", CE.describeSession(longRow, 1, now).title.length === 34 && CE.describeSession(longRow, 1, now).title.slice(-1) === "…")
+
+    // /open <number>
+    check("open 3", CE.openIndex("3", 10) === 3)
+    check("open tolerates spaces", CE.openIndex(" 2 ", 10) === 2)
+    check("open rejects zero, negatives, beyond the list, words, decimals, empty",
+          [CE.openIndex("0", 10), CE.openIndex("-1", 10), CE.openIndex("11", 10), CE.openIndex("x", 10), CE.openIndex("2.5", 10), CE.openIndex("", 10)].every(function(v) { return v === null }))
+    check("open with an empty list is refused", CE.openIndex("1", 0) === null)
+
+    // messages loaded from the server become chat rows
+    var loaded = CE.messagesFromServer([{role: "you", text: "hi"}, {role: "kokki", text: "yo"}])
+    check("messages become rows", loaded.length === 2 && loaded[1].role === "kokki" && loaded[1].failed === false)
+    check("malformed entries are dropped",
+          CE.messagesFromServer([{role: "bot", text: "x"}, {role: "you"}, "str", null, {role: "you", text: "ok"}]).length === 1)
+    check("a non-list gives no rows", same(CE.messagesFromServer({detail: "x"}), []))
+
+    // /help
+    check("help lists every command", ["/new", "/history", "/open", "/help"].every(function(c) { return CE.helpText().indexOf(c) >= 0 }))
+    check("help does not mention /more", CE.helpText().indexOf("/more") < 0)
+
+    // the command menu shown while typing "/"
+    var names = function(list) { return list.map(function(c) { return c.name }) }
+    check("a lone slash lists every command in order", same(names(CE.commandSuggestions("/")), ["new", "history", "open", "help"]))
+    check("typing filters by prefix", same(names(CE.commandSuggestions("/h")), ["history", "help"]))
+    check("a longer prefix narrows it", same(names(CE.commandSuggestions("/he")), ["help"]))
+    check("filtering ignores case", same(names(CE.commandSuggestions("/OPEN")), ["open"]))
+    check("no match gives an empty menu", CE.commandSuggestions("/x").length === 0)
+    check("plain text has no menu", CE.commandSuggestions("hello").length === 0 && CE.commandSuggestions("").length === 0)
+    check("a space means you moved on to the argument, so no menu", CE.commandSuggestions("/open ").length === 0)
+    check("a path is not a menu", CE.commandSuggestions("/etc/hosts").length === 0)
+    check("each entry explains itself", CE.commandSuggestions("/")[0].description.length > 0 && CE.commandSuggestions("/")[2].usage === "/open <number>")
+    check("/more is not offered", names(CE.commandSuggestions("/")).indexOf("more") < 0)
+
+    // choosing from the menu
+    var open = CE.commandSuggestions("/open")[0]
+    var history = CE.commandSuggestions("/history")[0]
+    check("a command that needs an argument is filled in, not run", same(CE.acceptSuggestion(open), {run: false, text: "/open "}))
+    check("a command without arguments runs at once", same(CE.acceptSuggestion(history), {run: true, text: "/history"}))
+    check("Tab completes the name and adds a space", CE.tabCompletion(history) === "/history " && CE.tabCompletion(open) === "/open ")
+    check("the highlight moves down and wraps", CE.moveIndex(0, 1, 4) === 1 && CE.moveIndex(3, 1, 4) === 0)
+    check("the highlight moves up and wraps", CE.moveIndex(2, -1, 4) === 1 && CE.moveIndex(0, -1, 4) === 3)
+    check("an empty menu keeps the highlight at zero", CE.moveIndex(5, 1, 0) === 0)
+
     // safeMarkdown
     check("image -> link", CE.safeMarkdown("![a](http://x/y.png)") === "[a](http://x/y.png)")
     check("reference image -> link", CE.safeMarkdown("![b][r]") === "[b][r]")
